@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import logging
+import os
+import mimetypes
 from typing import Any
 
 import pygments.lexers as pygment_lexers
@@ -89,7 +91,7 @@ def pygment_preview(
 
     max_size = max_size or pygment_config.get_default_max_size()
 
-    if file_url or resource.url_type != "upload":
+    if file_url or resource.url_type != "upload" or "cloudstorage" in tk.g.plugins:
         data = get_remote_resource_data(resource, max_size, file_url)
     else:
         data = get_local_resource_data(resource, max_size)
@@ -115,7 +117,6 @@ def pygment_preview(
 
     return f"<style>{styles}</style>{preview}"
 
-
 def get_local_resource_data(resource: model.Resource, maxsize: int) -> str:
     """Return a local resource data."""
     upload = uploader.get_resource_uploader(resource.as_dict(True))
@@ -138,7 +139,11 @@ def get_remote_resource_data(resource: model.Resource, max_size: int, file_url: 
 
     Fetching only up to maxsize bytes.
     """
-    url = file_url or resource.url
+    if "cloudstorage" in tk.g.plugins and resource.url_type == "upload":
+        url = _get_cloudstorage_resource(resource)
+    else:
+        url = file_url or resource.url
+
     if not url:
         return tk._("Resource URL is not provided")
 
@@ -165,6 +170,20 @@ def get_remote_resource_data(resource: model.Resource, max_size: int, file_url: 
         return data_bytes.decode(resp.encoding or "utf-8", errors="replace")
     except LookupError:
         return data_bytes.decode("utf-8", errors="replace")
+
+def _get_cloudstorage_resource(resource: model.Resource) -> str:
+    upload = uploader.get_resource_uploader(resource.as_dict(True))
+
+    if not any(cls.__name__ == "ResourceCloudStorage" for cls in type(upload).__mro__):
+        return tk._("Resource is not cloudstorage")
+
+    filename = os.path.basename(resource.url)
+    content_type, _ = mimetypes.guess_type(filename)
+
+    try:
+        return upload.get_url_from_filename(resource.id, filename, content_type=content_type) # type: ignore
+    except Exception as e:
+        return tk._("Unable to fetch cloudstorage resource")
 
 
 def get_lexer_for_resource(resource: model.Resource, file_url: str | None = None, data: str = "") -> Any:
