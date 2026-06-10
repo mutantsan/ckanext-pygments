@@ -91,7 +91,9 @@ def pygment_preview(
 
     max_size = max_size or pygment_config.get_default_max_size()
 
-    if file_url or resource.url_type != "upload" or "cloudstorage" in tk.g.plugins:
+    if not file_url and resource.url_type == "file":
+        data = get_file_resource_data(resource, max_size)
+    elif file_url or resource.url_type != "upload" or "cloudstorage" in tk.g.plugins:
         data = get_remote_resource_data(resource, max_size, file_url)
     else:
         data = get_local_resource_data(resource, max_size)
@@ -130,6 +132,29 @@ def get_local_resource_data(resource: model.Resource, maxsize: int) -> str:
         return "Pygments: Error reading data from file. Please, contact the administrator."
 
     return data
+
+
+def get_file_resource_data(resource: model.Resource, max_size: int) -> str:
+    """Read a ckanext-files resource directly from its storage."""
+    file_id = resource.url.rstrip("/").rsplit("/", 1)[-1]
+
+    try:
+        files = _get_files_api()
+        action = "file_show" if tk.check_ckan_version("2.12") else "files_file_show"
+        file_info = tk.get_action(action)({}, {"id": file_id})
+        storage = files.get_storage(file_info["storage"])
+        file_data = files.FileData.from_dict(file_info)
+
+        data_bytes = b""
+        for chunk in storage.stream(file_data):
+            data_bytes += chunk[: max_size - len(data_bytes)]
+            if len(data_bytes) >= max_size:
+                break
+    except Exception:  # noqa: BLE001
+        log.exception("Pygments: Error reading data from storage for resource: %s", resource.id)
+        return "Pygments: Error reading data from file. Please, contact the administrator."
+
+    return data_bytes.decode("utf-8", errors="replace")
 
 
 def get_remote_resource_data(resource: model.Resource, max_size: int, file_url: str | None) -> str:
@@ -171,6 +196,20 @@ def get_remote_resource_data(resource: model.Resource, max_size: int, file_url: 
     except LookupError:
         return data_bytes.decode("utf-8", errors="replace")
 
+
+def _get_files_api() -> Any:
+    """Load the storage API only when a ckanext-files resource is used."""
+    try:
+        from ckan.lib import files  # noqa: PLC0415
+    except ImportError:
+        try:
+            from ckanext.files import shared as files  # noqa: PLC0415
+        except ImportError as error:
+            raise RuntimeError("ckanext-files is required to read this resource") from error
+
+    return files
+
+
 def _get_cloudstorage_resource(resource: model.Resource) -> str:
     upload = uploader.get_resource_uploader(resource.as_dict(True))
 
@@ -182,7 +221,7 @@ def _get_cloudstorage_resource(resource: model.Resource) -> str:
 
     try:
         return upload.get_url_from_filename(resource.id, filename, content_type=content_type) # type: ignore
-    except Exception as e:
+    except Exception:  # noqa: BLE001
         return tk._("Unable to fetch cloudstorage resource")
 
 
