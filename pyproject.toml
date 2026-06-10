@@ -36,6 +36,7 @@ pygments_view = "ckanext.pygments.plugin:PygmentsPlugin"
 
 [project.optional-dependencies]
 admin = ["ckanext-admin_panel>=1.0.14"]
+dev = ["pytest-ckan"]
 
 [tool.setuptools.packages]
 find = {}
