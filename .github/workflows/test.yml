@@ -2,17 +2,20 @@ name: Tests
 on: [push, pull_request]
 jobs:
   test:
+    strategy:
+      matrix:
+        ckan-version: ["2.11", "2.10"]
+      fail-fast: false
+
     runs-on: ubuntu-latest
     container:
-      # The CKAN version tag of the Solr and Postgres containers should match
-      # the one of the container the tests run on.
-      # You can switch this base image with a custom image tailored to your project
-      image: openknowledge/ckan-dev:2.9
+      image: ckan/ckan-dev:${{ matrix.ckan-version }}
+      options: --user root
     services:
       solr:
-        image: ckan/ckan-solr-dev:2.9
+        image: ckan/ckan-solr:${{ matrix.ckan-version }}-solr9
       postgres:
-        image: ckan/ckan-postgres-dev:2.9
+        image: ckan/ckan-postgres-dev:${{ matrix.ckan-version }}
         env:
           POSTGRES_USER: postgres
           POSTGRES_PASSWORD: postgres
@@ -29,13 +32,12 @@ jobs:
       CKAN_REDIS_URL: redis://redis:6379/1
 
     steps:
-    - uses: actions/checkout@v2
+    - uses: actions/checkout@v4
     - name: Install requirements
       # Install any extra requirements your extension has here (dev requirements, other extensions etc)
       run: |
-        pip install -r requirements.txt
-        pip install -r dev-requirements.txt
-        pip install -e .
+        pip install --upgrade pip
+        pip install -e '.[dev]'
     - name: Setup extension
       # Extra initialization steps
       run: |
@@ -45,4 +47,3 @@ jobs:
         ckan -c test.ini db init
     - name: Run tests
       run: pytest --ckan-ini=test.ini --cov=ckanext.pygments --disable-warnings ckanext/pygments
-
