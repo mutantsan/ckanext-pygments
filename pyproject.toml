@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "ckanext-pygments"
-version = "1.4.1"
+version = "1.4.2"
 description = "Provides previews with syntax highlight for multiple formats"
 authors = [
     { name = "DataShades", email = "datashades@linkdigital.com.au" },
